@@ -3,9 +3,9 @@ services:
     name: ytdlbot
     env: python
     plan: free
+    pythonVersion: 3.11   # <<< фиксируем рабочую версию Python
     buildCommand: pip install -r requirements.txt
     startCommand: python3 main.py
-    autoDeploy: true
     envVars:
       - key: TOKEN
         sync: false
@@ -13,7 +13,5 @@ services:
         sync: false
       - key: REDIS_URL
         sync: false
-      - key: DOWNLOAD_DIR
-        sync: false
-      - key: MAX_FILE_MB
+      - key: DATABASE_URL
         sync: false
