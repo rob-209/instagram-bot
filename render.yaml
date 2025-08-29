@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: ytdlbot
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python3 main.py
+    autoDeploy: true
+    envVars:
+      - key: TOKEN
+        sync: false
+      - key: OWNER
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: DOWNLOAD_DIR
+        sync: false
+      - key: MAX_FILE_MB
+        sync: false
