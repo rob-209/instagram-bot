@@ -1,6 +1,6 @@
 aiogram==2.25.1
-aiohttp==3.8.5
-yt-dlp==2025.1.15
+aiohttp==3.8.5        # совместимо с aiogram
+yt-dlp==2025.1.15     # реально существующая версия
 ffmpeg-python==0.2.0
 redis==5.0.3
 python-dotenv==1.0.1
