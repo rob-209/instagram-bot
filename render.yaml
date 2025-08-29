@@ -1,17 +1,6 @@
-services:
-  - type: web
-    name: ytdlbot
-    env: python
-    plan: free
-    pythonVersion: 3.11   # <<< фиксируем рабочую версию Python
-    buildCommand: pip install -r requirements.txt
-    startCommand: python3 main.py
-    envVars:
-      - key: TOKEN
-        sync: false
-      - key: OWNER
-        sync: false
-      - key: REDIS_URL
-        sync: false
-      - key: DATABASE_URL
-        sync: false
+build:
+  # Сначала обновляем pip
+  - python -m ensurepip --upgrade
+  - python -m pip install --upgrade pip
+  # Потом устанавливаем зависимости
+  - pip install -r requirements.txt
