@@ -1,13 +1,14 @@
 services:
-  - type: web
-    name: yotube-bot
+  - type: worker
+    name: youtube-downloader-bot
     env: python
     plan: free
-    pythonVersion: 3.11.9
-    buildCommand: |
-      # Обновляем pip перед установкой зависимостей
-      python -m ensurepip --upgrade
-      python -m pip install --upgrade pip
-      # Устанавливаем зависимости
-      pip install -r requirements.txt
+    buildCommand: pip install -r requirements.txt
     startCommand: python main.py
+    envVars:
+      - key: TOKEN
+        sync: false
+      - key: MAX_FILE_MB
+        value: "200"
+      - key: DOWNLOAD_DIR
+        value: "/tmp"
