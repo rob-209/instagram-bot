@@ -7,12 +7,15 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 
-from aiogram import Bot, Dispatcher, executor, types
+from aiogram import Bot, Dispatcher, types
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.utils import executor
 from aiogram.utils.exceptions import MessageNotModified
 from dotenv import load_dotenv
+
 import yt_dlp
 
-# -------------------- CONFIG --------------------
+# ---------- Настройки ----------
 load_dotenv()
 
 TELEGRAM_TOKEN = os.getenv("TOKEN")
@@ -21,12 +24,10 @@ DOWNLOAD_DIR = Path(os.getenv("DOWNLOAD_DIR", "/tmp"))
 MAX_FILE_MB = int(os.getenv("MAX_FILE_MB", "200"))
 
 if not TELEGRAM_TOKEN:
-    raise RuntimeError("TOKEN is not set. Please provide Telegram bot token via env.")
+    raise RuntimeError("TOKEN не установлен! Добавь его в переменные окружения.")
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s: %(message)s"
-)
+logging.basicConfig(level=logging.INFO,
+                    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 log = logging.getLogger("ytdlbot")
 
 bot = Bot(token=TELEGRAM_TOKEN, parse_mode=types.ParseMode.HTML)
@@ -34,7 +35,7 @@ dp = Dispatcher(bot)
 
 URL_RE = re.compile(r"https?://\S+")
 
-# -------------------- HELPERS --------------------
+# ---------- Хелперы ----------
 def human_size(num_bytes: int) -> str:
     step = 1024.0
     units = ["B", "KB", "MB", "GB"]
@@ -46,10 +47,9 @@ def human_size(num_bytes: int) -> str:
     return f"{size:.2f} GB"
 
 def sanitize(text: str) -> str:
-    text = re.sub(r"[^\w\s.-]", "", text).strip()
-    return text[:80] if text else "file"
+    return re.sub(r"[^\w\s.-]", "", text).strip()[:80] or "file"
 
-def build_ydl_opts(tmpdir: Path, mode: str) -> dict:
+def build_ydl_opts(tmpdir: Path, audio_only=False) -> dict:
     outtmpl = str(tmpdir / "%(title).80s.%(ext)s")
     opts = {
         "outtmpl": outtmpl,
@@ -58,16 +58,16 @@ def build_ydl_opts(tmpdir: Path, mode: str) -> dict:
         "quiet": True,
         "no_warnings": True,
         "ignoreerrors": True,
-        "format": "bv*+ba/b" if mode == "video" else "bestaudio/best",
-        "postprocessors": [],
     }
-    # если выбрано аудио — конвертируем в mp3
-    if mode == "audio":
-        opts["postprocessors"].append({
+    if audio_only:
+        opts["format"] = "bestaudio/best"
+        opts["postprocessors"] = [{
             "key": "FFmpegExtractAudio",
             "preferredcodec": "mp3",
             "preferredquality": "192",
-        })
+        }]
+    else:
+        opts["format"] = "bv*+ba/b"
     return opts
 
 def pick_file_from_dir(d: Path) -> Optional[Path]:
@@ -76,51 +76,42 @@ def pick_file_from_dir(d: Path) -> Optional[Path]:
             return p
     return None
 
-# -------------------- COMMANDS --------------------
+# ---------- Обработчики ----------
 @dp.message_handler(commands=["start", "help"])
 async def cmd_help(message: types.Message):
     text = (
-        "👋 Привет! Я помогу скачать видео или аудио по ссылке с YouTube и других сайтов.\n\n"
+        "👋 Привет! Я помогу скачать <b>видео</b> или <b>аудио</b> с YouTube и других сайтов.\n\n"
         "<b>Как пользоваться:</b>\n"
-        "1. Пришлите ссылку на видео\n"
-        "2. Выберите, что скачать — 🎥 Видео или 🎵 Аудио\n"
-        "3. Получите файл\n\n"
-        f"⚡ Ограничения:\n• Максимальный размер: ~{MAX_FILE_MB} MB\n"
-        "• Плейлисты не поддерживаются\n"
+        "1️⃣ Пришли ссылку на видео\n"
+        "2️⃣ Выбери формат: 🎥 Видео или 🎵 Аудио\n"
+        "3️⃣ Дождись, пока я скачаю и отправлю файл\n\n"
+        f"<b>Ограничение:</b> до ~{MAX_FILE_MB} МБ"
     )
     await message.reply(text)
 
-# -------------------- URL HANDLER --------------------
 @dp.message_handler(regexp=URL_RE.pattern)
 async def handle_url(message: types.Message):
-    url_match = URL_RE.search(message.text or "")
-    if not url_match:
-        return
-    url = url_match.group(0)
+    url = URL_RE.search(message.text or "").group(0)
 
-    # Спрашиваем формат
-    keyboard = types.InlineKeyboardMarkup()
+    keyboard = InlineKeyboardMarkup(row_width=2)
     keyboard.add(
-        types.InlineKeyboardButton("🎥 Видео", callback_data=f"download_video|{url}"),
-        types.InlineKeyboardButton("🎵 Аудио", callback_data=f"download_audio|{url}")
+        InlineKeyboardButton("🎥 Видео", callback_data=f"video|{url}"),
+        InlineKeyboardButton("🎵 Аудио", callback_data=f"audio|{url}")
     )
-    await message.reply("Что скачать?", reply_markup=keyboard)
+    await message.reply("Выбери формат загрузки:", reply_markup=keyboard)
 
-# -------------------- CALLBACK HANDLER --------------------
-@dp.callback_query_handler(lambda c: c.data.startswith("download_"))
+@dp.callback_query_handler(lambda c: c.data.startswith(("video", "audio")))
 async def process_download(call: types.CallbackQuery):
-    await call.answer()
     mode, url = call.data.split("|", 1)
-    mode = mode.replace("download_", "")
+    audio_only = mode == "audio"
 
-    status = await call.message.reply("⏳ Загружаю… это может занять немного времени.")
+    status = await call.message.reply("⏳ Загружаю… Подождите немного.")
+
     tmpdir = Path(tempfile.mkdtemp(prefix="ytdl_", dir=str(DOWNLOAD_DIR)))
-
     try:
-        ydl_opts = build_ydl_opts(tmpdir, mode)
-        log.info("Downloading %s -> %s", url, tmpdir)
+        ydl_opts = build_ydl_opts(tmpdir, audio_only=audio_only)
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.extract_info(url, download=True)
+            info = ydl.extract_info(url, download=True)
 
         file_path = pick_file_from_dir(tmpdir)
         if not file_path or not file_path.exists():
@@ -131,37 +122,30 @@ async def process_download(call: types.CallbackQuery):
 
         if size_mb > MAX_FILE_MB:
             await status.edit_text(
-                f"⚠️ Файл слишком большой ({human_size(file_path.stat().st_size)}).\n"
-                "Попробуйте скачать по ссылке напрямую."
+                f"⚠️ Файл слишком большой: {human_size(file_path.stat().st_size)}.\n"
+                f"Лимит — {MAX_FILE_MB} MB."
             )
             return
 
-        ext = file_path.suffix.lower().lstrip(".")
         try:
-            if ext in {"mp4", "mkv", "webm", "mov"}:
-                await call.message.reply_video(open(file_path, "rb"), caption=caption)
-            elif ext in {"mp3", "m4a", "aac", "flac", "wav", "ogg"}:
+            if audio_only:
                 await call.message.reply_audio(open(file_path, "rb"), caption=caption)
+            elif file_path.suffix.lower().lstrip(".") in {"mp4", "mkv", "webm", "mov"}:
+                await call.message.reply_video(open(file_path, "rb"), caption=caption)
             else:
                 await call.message.reply_document(open(file_path, "rb"), caption=caption)
             await status.delete()
         except Exception as e:
-            log.exception("Send failed: %s", e)
-            await status.edit_text("❌ Не удалось отправить файл. Попробуйте другой формат или ссылку.")
+            log.exception("Ошибка при отправке файла: %s", e)
+            await status.edit_text("Не удалось отправить файл. Попробуйте другой формат или ссылку.")
     except yt_dlp.utils.DownloadError:
-        try:
-            await status.edit_text("❌ Ошибка загрузки. Проверьте ссылку или доступность видео.")
-        except MessageNotModified:
-            pass
+        await status.edit_text("❌ Ошибка загрузки. Проверь ссылку или доступность видео.")
     except Exception as e:
-        log.exception("Unexpected error: %s", e)
-        try:
-            await status.edit_text("❌ Произошла непредвиденная ошибка. Попробуйте ещё раз позже.")
-        except MessageNotModified:
-            pass
+        log.exception("Непредвиденная ошибка: %s", e)
+        await status.edit_text("⚠️ Произошла ошибка. Попробуй ещё раз позже.")
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 
-# -------------------- RUN --------------------
 if __name__ == "__main__":
+    log.info("Бот запущен...")
     executor.start_polling(dp, skip_updates=True)
