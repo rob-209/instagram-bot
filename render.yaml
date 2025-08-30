@@ -3,7 +3,7 @@ services:
     name: telegram-ytdlp-bot
     env: python
     plan: free
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
     startCommand: python main.py
     envVars:
       - key: TOKEN
