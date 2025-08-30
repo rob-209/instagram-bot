@@ -1,4 +1,5 @@
-aiogram==2.25.1
+aiogram==2.23
+aiohttp==3.9.5
 python-dotenv==1.0.1
 yt-dlp==2025.1.15
 redis==5.0.1
