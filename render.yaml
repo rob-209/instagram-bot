@@ -1,6 +1,6 @@
 services:
   - type: worker
-    name: youtube-downloader-bot
+    name: telegram-ytdlp-bot
     env: python
     plan: free
     buildCommand: pip install -r requirements.txt
@@ -8,7 +8,9 @@ services:
     envVars:
       - key: TOKEN
         sync: false
+      - key: OWNER
+        sync: false
       - key: MAX_FILE_MB
-        value: "200"
+        value: 200
       - key: DOWNLOAD_DIR
-        value: "/tmp"
+        value: /tmp
